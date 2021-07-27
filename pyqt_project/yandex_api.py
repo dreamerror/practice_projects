@@ -48,6 +48,9 @@ class YandexTrack:
     def duration_sec(self):
         return self.__track.duration_ms // 1000
 
+    def download_link(self) -> str:
+        return self.__track.get_download_info()[0].get_direct_link()
+
 
 class YandexPlaylist:
     def __init__(self, playlist: ym.Playlist):
@@ -187,4 +190,3 @@ class YandexClient:
     def track_by_id(self, track_id: str) -> YandexTrack:
         track = self.__client.tracks(track_id)[0]
         return YandexTrack(track)
-
