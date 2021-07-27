@@ -1,5 +1,5 @@
 import os
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import yandex_music as ym
 
@@ -10,9 +10,12 @@ PASSWORD = os.getenv('password')
 client = ym.Client.fromCredentials(LOGIN, PASSWORD)
 anonymous_client = ym.Client()
 
+# print(anonymous_client.account_status()['plus'].has_plus)
+# exit()
+
 
 class YandexTrack:
-    def __init__(self, track: Optional[ym.Track, ym.TrackShort]):
+    def __init__(self, track: Union[ym.Track, ym.TrackShort]):
         if isinstance(track, ym.TrackShort):
             self.__track = track.fetch_track()
         else:
@@ -49,84 +52,83 @@ class YandexPlaylist:
     def track_count(self) -> int:
         return self.__playlist.track_count
 
-
-def search_artist_by_name(ym_client: ym.Client, name: str, full_compar: bool = False) -> List[ym.Artist]:
-    artist_list = list()
-
-    for result in ym_client.search(name).artists.results:
-        if (full_compar and result.name == name) or not full_compar:
-            artist_list.append(result)
-
-    return artist_list
+    def get_playlist_tracks(self) -> List[YandexTrack]:
+        tracklist = list()
+        for track in self.__playlist:
+            track = YandexTrack(track)
+            tracklist.append(track)
+        return tracklist
 
 
-def get_artist_albums(artist: ym.Artist) -> List[ym.ArtistAlbums]:
-    all_albums = list()
-    page = 0
-    albums_on_page = True
+class YandexAlbum:
+    def __init__(self, album: ym.Album):
+        self.__album = album
 
-    while albums_on_page:
+    @property
+    def title(self):
+        return self.__album.title
 
-        if not artist.get_albums(page=page):
-            albums_on_page = False
+    def __repr__(self):
+        return self.title
 
+    def get_tracks(self) -> List[YandexTrack]:
+        all_tracks = list()
+        for volume in self.__album.volumes:
+            for track in volume:
+                all_tracks.append(YandexTrack(track))
+        return all_tracks
+
+
+class YandexArtist:
+    def __init__(self, artist: ym.Artist):
+        self.__artist = artist
+
+    @property
+    def name(self):
+        return self.__artist.name
+
+    def get_albums(self) -> List[YandexAlbum]:
+        all_albums = list()
+        page = 0
+        albums_on_page = True
+
+        while albums_on_page:
+
+            if not self.__artist.get_albums(page=page):
+                albums_on_page = False
+
+            else:
+                for album in self.__artist.get_albums(page=page):
+                    all_albums.append(YandexAlbum(album))
+                page += 1
+
+        return all_albums
+
+
+class YandexClient:
+    def __init__(self, yandex_client: ym.Client):
+        self.__client = yandex_client
+        if self.__client.account_status()['account']['login'] is None:
+            self.is_anonymous = True
         else:
-            all_albums += artist.get_albums(page=page)
-            page += 1
+            self.is_anonymous = False
+        self.subscription_status = False
+        if not self.is_anonymous:
+            self.subscription_status = self.__client.account_status()['plus'].has_plus
 
-    return all_albums
+    def get_playlists(self) -> Union[None, List[YandexPlaylist]]:
+        if self.is_anonymous:
+            return None
+        else:
+            playlists_list = list()
+            for playlist in self.__client.users_playlists_list():
+                playlist_kind = playlist.kind
+                playlists_list.append(YandexPlaylist(self.__client.users_playlists(kind=playlist_kind)))
+            return playlists_list
 
-
-def get_user_playlists(ym_client: ym.Client) -> List[ym.Playlist]:
-    playlist_list = list()
-    for playlist in ym_client.users_playlists_list():
-        playlist_kind = playlist.kind
-        playlist_list.append(ym_client.users_playlists(kind=playlist_kind))
-    return playlist_list
-
-
-def get_playlist_tracks(playlist: ym.Playlist) -> List[ym.Track]:
-    tracks = list()
-
-    for track in playlist.tracks:
-        tracks.append(track.fetch_track())
-    return tracks
-
-
-# for track in client.users_likes_tracks():
-#     track = track.fetch_track()
-#     album = track['albums'][0].title
-#     title = track['title']
-#     artists = list()
-#     for artist in track['artists']:
-#         # pprint(artist.id)
-#         pprint(client.search(artist.name).artists)
-#         artists.append(artist.name)
-#     artists_string = ', '.join(artists)
-    # pprint(f'{title} from {album} by {artists_string}')
-
-# client.users_likes_tracks()[3].fetch_track().download('nobody.mp3')
-
-# for artist in search_artist_by_name(anonymous_client, 'Pyrokinesis', True):
-#     for album in get_artist_albums(artist):
-#         s = list()
-#         for songer in album.artists:
-#             s.append(songer.name)
-#         print(f'{album.title}: {", ".join(s)}')
-
-# for track in client.users_likes_tracks():
-#     track = track.fetch_track()
-#     s = list()
-#     for songer in track.artists:
-#         s.append(songer.name)
-#     print(f'{track.title}: {", ".join(s)}: {normalize_duration(track.duration_ms)}')
-
-with open('log.txt', 'w') as log:
-    for playlist in get_user_playlists(client):
-    # playlist = get_user_playlists(client)[0]
-        log.write(playlist.title)
-        tracks = list()
-        for track in playlist.tracks:
-            log.write('\n')
-            log.write(f'\t\t{track.fetch_track().title}')
-        log.write('\n\n\n\n')
+    def search_artist_by_name(self, name: str, full_compar: bool = False) -> List[YandexArtist]:
+        artist_list = list()
+        for result in self.__client.search(name).artists.results:
+            if (full_compar and result.name == name) or not full_compar:
+                artist_list.append(YandexArtist(result))
+        return artist_list
