@@ -213,7 +213,7 @@ class YandexClient:
             captcha_key = captcha_answer = None
             while not self.__client:
                 try:
-                    self.__client = ym.Client.fromCredentials(login, pwd, captcha_key, captcha_answer)
+                    self.__client = ym.Client.fromCredentials(login, pwd, captcha_answer, captcha_key)
                 except Captcha as captcha:
                     print(captcha_key, captcha_answer)
                     try:
