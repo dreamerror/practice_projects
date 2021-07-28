@@ -10,6 +10,15 @@ LOGIN = os.getenv('username')
 PASSWORD = os.getenv('password')
 
 
+def check_anonymous(func):
+    def decorator(self, *args, **kwargs):
+        if self.is_anonymous:
+            return None
+        else:
+            return func(self, *args, **kwargs)
+    return decorator
+
+
 class YandexTrack:
     def __init__(self, track: Union[ym.Track, ym.TrackShort]):
         if isinstance(track, ym.TrackShort):
@@ -84,11 +93,11 @@ class YandexPlaylist:
     def __repr__(self):
         return self.title
 
-    @property
-    def track_count(self) -> int:
+    def __len__(self):
         return self.__playlist.track_count
 
-    def get_playlist_tracks(self) -> List[YandexTrack]:
+    @property
+    def tracks(self) -> List[YandexTrack]:
         """Получаем список треков, которые лежат в плейлисте"""
         tracklist = list()
         for track in self.__playlist.tracks:
@@ -107,6 +116,9 @@ class YandexAlbum:
 
     def __repr__(self):
         return self.title
+
+    def __len__(self):
+        return self.__album.track_count
 
     def get_tracks(self) -> List[YandexTrack]:
         """Получаем список треков, лежащих в альбоме (без разделения на диски)"""
@@ -220,30 +232,31 @@ class YandexClient:
         """True, если не получилось войти по логину/паролю (можно сообщить пользователю об этом)"""
         return self.__error
 
+    @check_anonymous
     def like_track(self, track: YandexTrack) -> bool:
         """True, если получилось лайкнуть трек"""
-        if not self.is_anonymous:
-            return self.__client.users_likes_tracks_add(track.id)
-        else:
-            return False
+        return self.__client.users_likes_tracks_add(track.id)
 
+    @check_anonymous
     def dislike_track(self, track: YandexTrack) -> bool:
         """True, если получилось дизлайкнуть трек"""
-        if not self.is_anonymous:
-            return self.__client.users_dislikes_tracks_add(track.id)
-        else:
-            return False
+        return self.__client.users_dislikes_tracks_add(track.id)
 
+    @check_anonymous
+    def get_user_favourite_tracks(self) -> Union[None, List[YandexTrack]]:
+        tracks = list()
+        for track in self.__client.users_likes_tracks():
+            tracks.append(YandexTrack(track))
+        return tracks
+
+    @check_anonymous
     def get_playlists(self) -> Union[None, List[YandexPlaylist]]:
         """Список всех плейлистов юзера либо None, если пользователь не вошёл"""
-        if self.is_anonymous:
-            return None
-        else:
-            playlists_list = list()
-            for playlist in self.__client.users_playlists_list():
-                playlist_kind = playlist.kind
-                playlists_list.append(YandexPlaylist(self.__client.users_playlists(kind=playlist_kind)))
-            return playlists_list
+        playlists_list = list()
+        for playlist in self.__client.users_playlists_list():
+            playlist_kind = playlist.kind
+            playlists_list.append(YandexPlaylist(self.__client.users_playlists(kind=playlist_kind)))
+        return playlists_list
 
     def search_artist_by_name(self, name: str, full_compar: bool = False) -> List[YandexArtist]:
         """
@@ -284,3 +297,23 @@ class YandexClient:
         track = self.__client.tracks(track_id)[0]
         return YandexTrack(track)
 
+    def get_world_chart(self) -> YandexPlaylist:
+        """Возвращает мировой чарт в виде плейлиста"""
+        chart = self.__client.chart('world')
+        return YandexPlaylist(chart.chart)
+
+    def get_ru_chart(self) -> YandexPlaylist:
+        """Возвращает русский чарт в виде плейлиста"""
+        chart = self.__client.chart('russia')
+        return YandexPlaylist(chart.chart)
+
+    @check_anonymous
+    def get_generated_playlists(self) -> Union[None, List[YandexPlaylist]]:
+        """
+        Возвращает автоматически сгенерированные плейлисты (как плейлист дня, тайник и подобные)
+        Если юзер анонимный, возвращает None
+        """
+        playlists = list()
+        for generated_playlist in self.__client.feed().generated_playlists:
+            playlists.append(YandexPlaylist(generated_playlist.data))
+        return playlists
