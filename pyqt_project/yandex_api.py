@@ -136,7 +136,7 @@ class YandexArtist:
 
 
 class YandexClient:
-    def __init__(self, yandex_client: Union[ym.Client, Tuple[str, str]]):
+    def __init__(self, yandex_client: Union[ym.Client, Tuple[str, str]] = ym.Client()):
         if isinstance(yandex_client, ym.Client):
             self.__client = yandex_client
         else:
