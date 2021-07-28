@@ -1,7 +1,9 @@
 import os
+import requests
 from typing import List, Union, Tuple
 
 import yandex_music as ym
+from yandex_music.exceptions import BadRequest
 
 
 LOGIN = os.getenv('username')
@@ -32,10 +34,12 @@ class YandexTrack:
         return artists
 
     def __repr__(self):
+        """Возвращает песню в формате НАЗВАНИЕ by ИСПОЛНИТЕЛЬ_1, ИСПОЛНИТЕЛЬ_2 и т.д."""
         return self.title + ' by ' + ', '.join(list(map(str, self.artists_list)))
 
     @property
     def duration(self) -> str:
+        """Продолжительность трека в формате минуты:секунды (без часов)"""
         duration_ms = self.__track.duration_ms
         seconds = duration_ms // 1000
         minutes = seconds // 60
@@ -46,10 +50,24 @@ class YandexTrack:
 
     @property
     def duration_sec(self):
+        """Целочисленное значение продолжительности трека в секундах"""
         return self.__track.duration_ms // 1000
 
     def download_link(self) -> str:
+        """
+        Возвращает прямую ссылку на трек
+        Ссылка работает только минуту после генерации, после запрос выдаст 401
+        """
         return self.__track.get_download_info()[0].get_direct_link()
+
+    def get_track(self) -> requests.Response:
+        """Получаем трек с помощью ссылки из метода download_link"""
+        r = requests.get(self.download_link())
+        return r
+
+    def download(self, filename: str):
+        """Скачиваем трек в формате mp3"""
+        self.__track.download(filename, codec='mp3')
 
 
 class YandexPlaylist:
@@ -68,6 +86,7 @@ class YandexPlaylist:
         return self.__playlist.track_count
 
     def get_playlist_tracks(self) -> List[YandexTrack]:
+        """Получаем список треков, которые лежат в плейлисте"""
         tracklist = list()
         for track in self.__playlist.tracks:
             track = YandexTrack(track)
@@ -87,6 +106,7 @@ class YandexAlbum:
         return self.title
 
     def get_tracks(self) -> List[YandexTrack]:
+        """Получаем список треков, лежащих в альбоме (без разделения на диски)"""
         all_tracks = list()
         for volume in self.__album.volumes:
             for track in volume:
@@ -109,6 +129,10 @@ class YandexArtist:
         return self.name
 
     def get_albums(self) -> List[YandexAlbum]:
+        """
+        Получаем список всех альбомов артиста, включая:
+        синглы, сборники и альбомы другого артиста, если в них есть фит с этим
+         """
         all_albums = list()
         page = 0
         albums_on_page = True
@@ -137,18 +161,36 @@ class YandexArtist:
 
 class YandexClient:
     def __init__(self, yandex_client: Union[ym.Client, Tuple[str, str]] = ym.Client()):
+        """
+
+        :param yandex_client: Принимает инстанс класса ym.Client, либо кортеж из двух строк
+        Во втором случае пытается войти в аккаунт по логину/паролю, в случае неуспеха YandexClient создаётся,
+        но факт ошибки сохраняется.
+        Если параметр не указывается, создаём анонимного пользователя
+        """
+        self.__error = False
         if isinstance(yandex_client, ym.Client):
             self.__client = yandex_client
         else:
             login, pwd = yandex_client
-            self.__client = ym.Client.fromCredentials(login, pwd)
-        if self.__client.account_status()['account']['login'] is None:
+            try:
+                self.__client = ym.Client.fromCredentials(login, pwd)
+            except BadRequest:
+                self.__error = True
+        if self.__error:
             self.is_anonymous = True
         else:
-            self.is_anonymous = False
+            if self.__client.account_status()['account']['login'] is None:
+                self.is_anonymous = True
+            else:
+                self.is_anonymous = False
         self.subscription_status = False
         if not self.is_anonymous:
             self.subscription_status = self.__client.account_status()['plus'].has_plus
+
+    @property
+    def error(self) -> bool:
+        return self.__error
 
     def like_track(self, track: YandexTrack) -> bool:
         if not self.is_anonymous:
@@ -163,6 +205,7 @@ class YandexClient:
             return False
 
     def get_playlists(self) -> Union[None, List[YandexPlaylist]]:
+        """Список всех плейлистов юзера либо None, если пользователь не вошёл"""
         if self.is_anonymous:
             return None
         else:
@@ -173,6 +216,12 @@ class YandexClient:
             return playlists_list
 
     def search_artist_by_name(self, name: str, full_compar: bool = False) -> List[YandexArtist]:
+        """
+
+        :param name: Строка, по которой будет производиться поиск
+        :param full_compar: Если True, ищем только полные соответствия (по умолчанию False)
+        :return: Список артистов, удовлетворивших критериям поиска
+        """
         artist_list = list()
         print(self.__client.search(name))
         for result in self.__client.search(name).artists.results:
@@ -181,12 +230,32 @@ class YandexClient:
         return artist_list
 
     def search_track_by_title(self, title: str, full_compar: bool = False) -> List[YandexTrack]:
+        """
+
+        :param title: Название трека, по которому производится поиск
+        :param full_compar: Если True, ищем только полные соответствия (по умолчанию False)
+        :return: Список треков, удовлетворивших условиям поиска
+        """
         track_list = list()
         for result in self.__client.search(title).tracks.results:
             if (full_compar and result.title == title) or not full_compar:
                 track_list.append(YandexTrack(result))
         return track_list
 
+    def search_all(self, name: str, full_compar: bool = False) -> List[List[YandexArtist], List[YandexTrack]]:
+        """
+        Поиск артистов и треков по заданной строке
+        :return: Список списков артистов и треков
+        """
+        artist_list = self.search_artist_by_name(name, full_compar)
+        track_list = self.search_track_by_title(name, full_compar)
+        return [artist_list, track_list]
+
     def track_by_id(self, track_id: str) -> YandexTrack:
         track = self.__client.tracks(track_id)[0]
         return YandexTrack(track)
+
+
+client = YandexClient((LOGIN, PASSWORD))
+plst = client.get_playlists()[0]
+trck = plst.get_playlist_tracks()[0]
