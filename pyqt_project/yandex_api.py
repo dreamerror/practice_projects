@@ -3,7 +3,7 @@ import requests
 from typing import List, Union, Tuple
 
 import yandex_music as ym
-from yandex_music.exceptions import BadRequest
+from yandex_music.exceptions import BadRequest, Captcha
 
 
 LOGIN = os.getenv('username')
@@ -66,7 +66,10 @@ class YandexTrack:
         return r
 
     def download(self, filename: str):
-        """Скачиваем трек в формате mp3"""
+        """
+        Скачиваем трек в формате mp3
+        :param filename: Имя файла вместе с расширением
+        """
         self.__track.download(filename, codec='mp3')
 
 
@@ -169,14 +172,11 @@ class YandexClient:
         Если параметр не указывается, создаём анонимного пользователя
         """
         self.__error = False
+        self.__client = None
         if isinstance(yandex_client, ym.Client):
             self.__client = yandex_client
         else:
-            login, pwd = yandex_client
-            try:
-                self.__client = ym.Client.fromCredentials(login, pwd)
-            except BadRequest:
-                self.__error = True
+            self.init_client(yandex_client)
         if self.__error:
             self.is_anonymous = True
         else:
@@ -188,17 +188,47 @@ class YandexClient:
         if not self.is_anonymous:
             self.subscription_status = self.__client.account_status()['plus'].has_plus
 
+    def init_client(self, yandex_client: Tuple[str, str]):
+        """
+        Инициализация клиента. Вынесена в отдельную функцию, поскольку иногда требуется ввод капчи
+        Капча загружается в файл captcha.png в рабочей директории
+        Ответ на капчу вводится обычным инпутом
+        :param yandex_client: Кортеж из двух строк (логин и пароль)
+        Пока не будет введена правильная капча, она будет перезагружаться
+        """
+        login, pwd = yandex_client
+        try:
+            captcha_key = captcha_answer = None
+            while not self.__client:
+                try:
+                    self.__client = ym.Client.fromCredentials(login, pwd, captcha_key, captcha_answer)
+                except Captcha as captcha:
+                    print(captcha_key, captcha_answer)
+                    try:
+                        os.remove('captcha.png')
+                    except FileNotFoundError:
+                        pass
+                    captcha.captcha.download('captcha.png')
+                    captcha_key = captcha.captcha.x_captcha_key
+                    captcha_answer = input()
+        except BadRequest:
+            self.__error = True
+            self.__client = ym.Client()
+
     @property
     def error(self) -> bool:
+        """True, если не получилось войти по логину/паролю (можно сообщить пользователю об этом)"""
         return self.__error
 
     def like_track(self, track: YandexTrack) -> bool:
+        """True, если получилось лайкнуть трек"""
         if not self.is_anonymous:
             return self.__client.users_likes_tracks_add(track.id)
         else:
             return False
 
     def dislike_track(self, track: YandexTrack) -> bool:
+        """True, если получилось дизлайкнуть трек"""
         if not self.is_anonymous:
             return self.__client.users_dislikes_tracks_add(track.id)
         else:
@@ -223,7 +253,6 @@ class YandexClient:
         :return: Список артистов, удовлетворивших критериям поиска
         """
         artist_list = list()
-        print(self.__client.search(name))
         for result in self.__client.search(name).artists.results:
             if (full_compar and result.name == name) or not full_compar:
                 artist_list.append(YandexArtist(result))
@@ -242,7 +271,7 @@ class YandexClient:
                 track_list.append(YandexTrack(result))
         return track_list
 
-    def search_all(self, name: str, full_compar: bool = False) -> List[List[YandexArtist], List[YandexTrack]]:
+    def search_all(self, name: str, full_compar: bool = False) -> List[Union[List[YandexArtist], List[YandexTrack]]]:
         """
         Поиск артистов и треков по заданной строке
         :return: Список списков артистов и треков
@@ -255,7 +284,3 @@ class YandexClient:
         track = self.__client.tracks(track_id)[0]
         return YandexTrack(track)
 
-
-client = YandexClient((LOGIN, PASSWORD))
-plst = client.get_playlists()[0]
-trck = plst.get_playlist_tracks()[0]
