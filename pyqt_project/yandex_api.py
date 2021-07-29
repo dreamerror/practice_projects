@@ -56,8 +56,8 @@ class YandexTrack:
         seconds = duration_ms // 1000
         minutes = seconds // 60
         seconds -= minutes * 60
-        s_seconds = str(seconds) if seconds > 10 else '0' + str(seconds)
-        s_minutes = str(minutes) if minutes > 10 else '0' + str(minutes)
+        s_seconds = str(seconds) if seconds >= 10 else '0' + str(seconds)
+        s_minutes = str(minutes) if minutes >= 10 else '0' + str(minutes)
         return f'{s_minutes}:{s_seconds}'
 
     @property
