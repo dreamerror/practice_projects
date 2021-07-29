@@ -46,6 +46,10 @@ class YandexTrack:
         """Возвращает песню в формате НАЗВАНИЕ by ИСПОЛНИТЕЛЬ_1, ИСПОЛНИТЕЛЬ_2 и т.д."""
         return self.title + ' by ' + ', '.join(list(map(str, self.artists_list)))
 
+    def __str__(self):
+        """Возвращает песню в формате НАЗВАНИЕ by ИСПОЛНИТЕЛЬ_1, ИСПОЛНИТЕЛЬ_2 и т.д."""
+        return self.title + ' by ' + ', '.join(list(map(str, self.artists_list)))
+
     @property
     def duration(self) -> str:
         """Продолжительность трека в формате минуты:секунды (без часов)"""
@@ -317,3 +321,9 @@ class YandexClient:
         for generated_playlist in self.__client.feed().generated_playlists:
             playlists.append(YandexPlaylist(generated_playlist.data))
         return playlists
+
+
+client = YandexClient((LOGIN, PASSWORD))
+chart = client.get_ru_chart()
+for track in chart.tracks:
+    print(client.track_by_id(track_id=track.id))
