@@ -108,6 +108,11 @@ class YandexPlaylist:
             tracklist.append(track)
         return tracklist
 
+    def tracks_generator(self):
+        for track in self.__playlist.tracks:
+            track = YandexTrack(track)
+            yield track
+
 
 class YandexAlbum:
     def __init__(self, album: ym.Album):
@@ -320,9 +325,3 @@ class YandexClient:
         for generated_playlist in self.__client.feed().generated_playlists:
             playlists.append(YandexPlaylist(generated_playlist.data))
         return playlists
-
-
-client = YandexClient((LOGIN, PASSWORD))
-chart = client.get_ru_chart()
-for track in chart.tracks:
-    print(client.track_by_id(track_id=track.id))
