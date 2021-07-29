@@ -47,8 +47,7 @@ class YandexTrack:
         return self.title + ' by ' + ', '.join(list(map(str, self.artists_list)))
 
     def __str__(self):
-        """Возвращает песню в формате НАЗВАНИЕ by ИСПОЛНИТЕЛЬ_1, ИСПОЛНИТЕЛЬ_2 и т.д."""
-        return self.title + ' by ' + ', '.join(list(map(str, self.artists_list)))
+        return self.__repr__()
 
     @property
     def duration(self) -> str:
